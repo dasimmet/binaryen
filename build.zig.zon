@@ -1,28 +1,12 @@
 .{
-    .name = .wabt,
-    .fingerprint = 0x9e1a5a2e5a578d2a,
-    .version = "1.0.36",
+    .name = .binaryen,
+    .fingerprint = 0x57f8a93b71cf59a7,
+    .version = "0.0.121",
     .minimum_zig_version = "0.17.0",
     .dependencies = .{
-        .wabt = .{
-            .url = "git+https://github.com/WebAssembly/wabt.git#3e826ecde1adfba5f88d10d361131405637e65a3",
-            .hash = "N-V-__8AAPcufQAiaPNrsEEAVJVm8qM22IHoAvhZ5s1DmxpG",
-            .lazy = true,
-        },
-        .picosha = .{
-            .url = "git+https://github.com/okdshin/PicoSHA2.git#27fcf6979298949e8a462e16d09a0351c18fcaf2",
-            .hash = "N-V-__8AALB3AACYCxTG6hB9aer89C8d3Pwn95f2n-agAxdx",
-            .lazy = true,
-        },
-        .wasmc = .{
-            .url = "git+https://github.com/WebAssembly/wasm-c-api.git#b6dd1fb658a282c64b029867845bc50ae59e1497",
-            .hash = "N-V-__8AACXfBABwtR2r9cJHPvKdfoVwAgIl83uZazZRIn3v",
-            .lazy = true,
-        },
         .binaryen = .{
             .url = "git+https://github.com/WebAssembly/binaryen.git?ref=version_121#353b759b230dff8fb82aeb157aeb6db360d74a49",
             .hash = "N-V-__8AANPvGQLjUqqO-n8CVrpofknXXN8z1QlfQ5SNP0m0",
-            .lazy = true,
         },
     },
     .paths = .{
@@ -30,7 +14,5 @@
         "LICENSE",
         "build.zig",
         "build.zig.zon",
-        "wabt.zig",
-        "binaryen.zig",
     },
 }
