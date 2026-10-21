@@ -58,6 +58,7 @@ pub fn build(b: *std.Build) void {
     lib.root_module.addCSourceFiles(.{
         .files = lib_sources,
         .root = src_path,
+        .flags = flags,
     });
     b.installArtifact(lib);
 
@@ -88,11 +89,13 @@ pub fn build(b: *std.Build) void {
         d_lib.root_module.addCSourceFiles(.{
             .files = dep_lib.sources,
             .root = d_root,
+            .flags = flags,
         });
         if (ptrHasField(dep_lib, "add_intrinsics")) {
             d_lib.root_module.addCSourceFiles(.{
                 .files = &.{intrinsics_basename},
                 .root = intrinsics,
+                .flags = flags,
             });
         }
         if (ptrHasField(dep_lib, "link_llvm")) {
@@ -106,10 +109,9 @@ pub fn build(b: *std.Build) void {
     }
 
     const tools_path = src_dep.path("src/tools");
-    const tools_fuzzing_path = src_dep.path(tools_fuzzing.path);
     inline for (tools) |t| {
         const exe = b.addExecutable(.{
-            .name = t,
+            .name = t.name,
             .root_module = b.createModule(.{
                 .target = target,
                 .optimize = opt,
@@ -120,83 +122,84 @@ pub fn build(b: *std.Build) void {
         exe.root_module.addIncludePath(src_path);
         exe.root_module.addIncludePath(fp16_path);
         exe.root_module.addIncludePath(tools_path);
-        exe.root_module.addCSourceFiles(.{
-            .files = &.{t ++ ".cpp"},
-            .root = tools_path,
-        });
-        exe.root_module.addCSourceFiles(.{
-            .files = tools_fuzzing.sources,
-            .root = tools_fuzzing_path,
-        });
+        if (t.files) |files| {
+            exe.root_module.addCSourceFiles(.{
+                .files = files,
+                .root = tools_path,
+                .flags = flags,
+            });
+        } else {
+            exe.root_module.addCSourceFiles(.{
+                .files = &.{t.name ++ ".cpp"},
+                .root = tools_path,
+                .flags = flags,
+            });
+        }
         exe.root_module.linkLibrary(llvm_lib);
         const exe_install = b.addInstallArtifact(exe, .{});
         b.default_step.dependOn(&exe_install.step);
-        b.step("binaryen-" ++ t, "binaryen-tool " ++ t).dependOn(&exe_install.step);
-
-        if (std.mem.eql(u8, "wasm-opt", t)) {
-            if (b.option(
-                LazyPath,
-                "wasmopt_path",
-                "path to a wasm file to convert to .wasm",
-            )) |wasm_path| {
-                const run = b.addRunArtifact(exe);
-                run.addFileArg(wasm_path);
-                const out_basename = b.option(
-                    []const u8,
-                    "wasmopt_out_basename",
-                    "basename of generated .wasm",
-                ) orelse "out.wasm";
-                const output = run.addPrefixedOutputFileArg("--output=", out_basename);
-                const default_args: []const []const u8 = &.{
-                    "-Oz",
-                    "-c",
-                };
-                const extra_args = b.option(
-                    []const []const u8,
-                    "wasmopt_extra_args",
-                    "basename of generated .wasm",
-                ) orelse default_args;
-                run.addArgs(extra_args);
-                b.addNamedLazyPath(out_basename, output);
-            }
-        }
+        b.step("binaryen-" ++ t.name, "binaryen-tool " ++ t.name).dependOn(&exe_install.step);
     }
 }
 
-inline fn zig_13_or_older() bool {
-    const zig_version = @import("builtin").zig_version;
-    return zig_version.major == 0 and zig_version.minor <= 13;
-}
-
 fn ptrHasField(ptr: anytype, comptime name: []const u8) bool {
-    const ptr_type = if (zig_13_or_older())
-        @typeInfo(@TypeOf(ptr)).Pointer.child
-    else
-        @typeInfo(@TypeOf(ptr)).pointer.child;
-    return @hasField(ptr_type, name);
+    return @hasField(@typeInfo(@TypeOf(ptr)).pointer.child, name);
 }
 
-const tools = &.{
-    "wasm-as",
-    "wasm-ctor-eval",
-    "wasm-dis",
-    "wasm-emscripten-finalize",
-    "wasm-fuzz-lattices",
-    "wasm-fuzz-types",
-    "wasm-merge",
-    "wasm-metadce",
-    "wasm-opt",
-    "wasm-reduce",
-    "wasm-shell",
+const flags = &.{"-std=c++20"};
+
+const Tool = struct {
+    name: []const u8,
+    files: ?[]const []const u8 = null,
 };
 
-const tools_fuzzing = .{
-    .path = "src/tools/fuzzing",
-    .sources = &.{
-        "fuzzing.cpp",
-        "heap-types.cpp",
-        "random.cpp",
+const tools: []const Tool = &.{
+    .{ .name = "wasm-as" },
+    .{ .name = "wasm-ctor-eval" },
+    .{ .name = "wasm-dis" },
+    .{ .name = "wasm-emscripten-finalize" },
+    .{
+        .name = "wasm-fuzz-lattices",
+        .files = &(.{
+            "wasm-fuzz-lattices.cpp",
+        } ++ fuzz_sources),
     },
+    .{
+        .name = "wasm-fuzz-types",
+        .files = &(.{
+            "wasm-fuzz-types.cpp",
+        } ++ fuzz_sources),
+    },
+    .{ .name = "wasm-merge" },
+    .{
+        .name = "wasm-opt",
+        .files = &(.{
+            "wasm-opt.cpp",
+        } ++ fuzz_sources),
+    },
+    .{
+        .name = "wasm-reduce",
+        .files = &.{
+            "wasm-reduce/wasm-reduce.cpp",
+        },
+    },
+    .{
+        .name = "wasm-split",
+        .files = &.{
+            "wasm-split/wasm-split.cpp",
+            "wasm-split/split-options.cpp",
+            "wasm-split/instrumenter.cpp",
+        },
+    },
+    .{ .name = "wasm-shell" },
+};
+
+const fuzz_sources = .{
+    "fuzzing/fuzz-stats.cpp",
+    "fuzzing/fuzzing.cpp",
+    "fuzzing/heap-types.cpp",
+    "fuzzing/parameters.cpp",
+    "fuzzing/random.cpp",
 };
 
 const lib_sources = &.{
@@ -238,7 +241,6 @@ const libparser = .{
     .sources = &.{
         "context-decls.cpp",
         "context-defs.cpp",
-        "lexer.cpp",
         "parse-1-decls.cpp",
         "parse-2-typedefs.cpp",
         "parse-3-implicit-types.cpp",
@@ -252,10 +254,12 @@ const libparser = .{
 const libwasm = .{
     .path = "wasm",
     .sources = &.{
+        "literal.cpp",
+        "parsing.cpp",
+        "source-map.cpp",
         "wasm-binary.cpp",
         "wasm-debug.cpp",
         "wasm-emscripten.cpp",
-        "wasm-interpreter.cpp",
         "wasm-io.cpp",
         "wasm-ir-builder.cpp",
         "wasm-stack-opts.cpp",
@@ -264,9 +268,6 @@ const libwasm = .{
         "wasm-type.cpp",
         "wasm-validator.cpp",
         "wasm.cpp",
-        "literal.cpp",
-        "parsing.cpp",
-        "source-map.cpp",
     },
 };
 
@@ -281,14 +282,16 @@ const libsupport = .{
         "debug.cpp",
         "dfa_minimization.cpp",
         "file.cpp",
+        "int128.cpp",
+        "intervals.cpp",
         "istring.cpp",
         "json.cpp",
         "name.cpp",
         "path.cpp",
         "safe_integer.cpp",
         "string.cpp",
-        "suffix_tree.cpp",
         "suffix_tree_node.cpp",
+        "suffix_tree.cpp",
         "threads.cpp",
         "utilities.cpp",
     },
@@ -308,8 +311,10 @@ const libpasses = .{
         "CodePushing.cpp",
         "ConstantFieldPropagation.cpp",
         "ConstHoisting.cpp",
+        "ConstraintAnalysis.cpp",
         "DataFlowOpts.cpp",
         "DeadArgumentElimination.cpp",
+        "DeadArgumentElimination2.cpp",
         "DeadCodeElimination.cpp",
         "DeAlign.cpp",
         "DebugLocationPropagation.cpp",
@@ -328,17 +333,16 @@ const libpasses = .{
         "GlobalStructInference.cpp",
         "GlobalTypeOptimization.cpp",
         "GUFA.cpp",
-        "hash-stringify-walker.cpp",
         "Heap2Local.cpp",
         "HeapStoreOptimization.cpp",
         "I64ToI32Lowering.cpp",
         "Inlining.cpp",
+        "InstrumentBranchHints.cpp",
         "InstrumentLocals.cpp",
         "InstrumentMemory.cpp",
         "Intrinsics.cpp",
         "J2CLItableMerging.cpp",
         "J2CLOpts.cpp",
-        "JSPI.cpp",
         "LegalizeJSInterface.cpp",
         "LimitSegments.cpp",
         "LLVMMemoryCopyFillLowering.cpp",
@@ -347,6 +351,8 @@ const libpasses = .{
         "LocalSubtyping.cpp",
         "LogExecution.cpp",
         "LoopInvariantCodeMotion.cpp",
+        "MakeSharedObjects.cpp",
+        "MarkJSCalled.cpp",
         "Memory64Lowering.cpp",
         "MemoryPacking.cpp",
         "MergeBlocks.cpp",
@@ -373,13 +379,19 @@ const libpasses = .{
         "PostEmscripten.cpp",
         "Precompute.cpp",
         "Print.cpp",
+        "PrintBoundary.cpp",
         "PrintCallGraph.cpp",
         "PrintFeatures.cpp",
         "PrintFunctionMap.cpp",
+        "RandomizeBranchHints.cpp",
         "RedundantSetElimination.cpp",
+        "RemoveEmptyFunctionExports.cpp",
+        "RemoveExports.cpp",
         "RemoveImports.cpp",
-        "RemoveMemory.cpp",
+        "RemoveMemoryInit.cpp",
         "RemoveNonJSOps.cpp",
+        "RemoveRelaxedSIMD.cpp",
+        "RemoveStart.cpp",
         "RemoveUnusedBrs.cpp",
         "RemoveUnusedModuleElements.cpp",
         "RemoveUnusedNames.cpp",
@@ -387,6 +399,7 @@ const libpasses = .{
         "ReorderFunctions.cpp",
         "ReorderGlobals.cpp",
         "ReorderLocals.cpp",
+        "ReorderTypes.cpp",
         "ReReloop.cpp",
         "RoundTrip.cpp",
         "SafeHeap.cpp",
@@ -401,14 +414,17 @@ const libpasses = .{
         "SpillPointers.cpp",
         "SSAify.cpp",
         "StackCheck.cpp",
+        "string-utils.cpp",
+        "StringLifting.cpp",
         "StringLowering.cpp",
         "Strip.cpp",
         "StripEH.cpp",
         "StripTargetFeatures.cpp",
+        "StripToolchainAnnotations.cpp",
+        "TailCall.cpp",
         "test_passes.cpp",
         "TraceCalls.cpp",
         "TranslateEH.cpp",
-        "TrapMode.cpp",
         "TupleOptimization.cpp",
         "TypeFinalizing.cpp",
         "TypeGeneralizing.cpp",
@@ -424,7 +440,8 @@ const libpasses = .{
 const libir = .{
     .path = "ir",
     .sources = &.{
-        "debuginfo.cpp",
+        "abstract.cpp",
+        "constraint.cpp",
         "drop.cpp",
         "effects.cpp",
         "eh-utils.cpp",
@@ -436,13 +453,18 @@ const libir = .{
         "LocalStructuralDominance.cpp",
         "lubs.cpp",
         "memory-utils.cpp",
+        "metadata.cpp",
         "module-splitting.cpp",
         "module-utils.cpp",
         "names.cpp",
         "possible-contents.cpp",
+        "principal-type.cpp",
         "properties.cpp",
+        "public-type-validator.cpp",
         "ReFinalize.cpp",
         "return-utils.cpp",
+        "runtime-global.cpp",
+        "runtime-table.cpp",
         "stack-utils.cpp",
         "table-utils.cpp",
         "type-updating.cpp",
@@ -500,8 +522,8 @@ const llvm = .{
         "MD5.cpp",
         "MemoryBuffer.cpp",
         "NativeFormatting.cpp",
-        "ObjectFile.cpp",
         "obj2yaml_Error.cpp",
+        "ObjectFile.cpp",
         "Optional.cpp",
         "Path.cpp",
         "raw_ostream.cpp",
