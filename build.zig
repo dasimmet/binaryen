@@ -41,40 +41,46 @@ pub fn build(b: *std.Build) void {
     });
     const intrinsics = intrinsics_src.getOutputDir();
 
+    const binaryen = b.addModule("binaryen", .{
+        .target = target,
+        .optimize = opt,
+        .link_libcpp = true,
+    });
+
     const lib = b.addLibrary(.{
         .name = "binaryen",
-        .root_module = b.createModule(.{
-            .target = target,
-            .optimize = opt,
-            .link_libcpp = true,
-        }),
+        .root_module = binaryen,
     });
+
     const src_path = src_dep.path("src");
     const fp16_path = src_dep.path("third_party/FP16/include");
-    lib.root_module.addIncludePath(config_h_include);
-    lib.root_module.addIncludePath(src_path);
-    lib.root_module.addIncludePath(fp16_path);
-    lib.root_module.addIncludePath(src_dep.path(llvm.include_path));
-    lib.root_module.addCSourceFiles(.{
+    binaryen.addIncludePath(config_h_include);
+    binaryen.addIncludePath(src_path);
+    binaryen.addIncludePath(fp16_path);
+    binaryen.addIncludePath(src_dep.path(llvm_src.include_path));
+    binaryen.addCSourceFiles(.{
         .files = lib_sources,
         .root = src_path,
         .flags = flags,
     });
     b.installArtifact(lib);
 
+    const llvm = b.createModule(.{
+        .target = target,
+        .optimize = opt,
+        .link_libcpp = true,
+    });
+
     const llvm_lib = b.addLibrary(.{
         .name = "LLVMDWARF",
-        .root_module = b.createModule(.{
-            .target = target,
-            .optimize = opt,
-            .link_libcpp = true,
-        }),
+        .root_module = llvm,
     });
-    llvm_lib.root_module.addCSourceFiles(.{
-        .files = llvm.sources,
-        .root = src_dep.path(llvm.src_path),
+
+    llvm.addCSourceFiles(.{
+        .files = llvm_src.sources,
+        .root = src_dep.path(llvm_src.src_path),
     });
-    llvm_lib.root_module.addIncludePath(src_dep.path(llvm.include_path));
+    llvm.addIncludePath(src_dep.path(llvm_src.include_path));
 
     inline for (dep_libs) |dep_lib| {
         const d_lib = b.addLibrary(.{
@@ -99,12 +105,12 @@ pub fn build(b: *std.Build) void {
             });
         }
         if (ptrHasField(dep_lib, "link_llvm")) {
-            d_lib.root_module.addIncludePath(src_dep.path(llvm.include_path));
+            d_lib.root_module.addIncludePath(src_dep.path(llvm_src.include_path));
         }
         d_lib.root_module.addIncludePath(src_path);
         d_lib.root_module.addIncludePath(config_h_include);
         d_lib.root_module.addIncludePath(fp16_path);
-        lib.root_module.linkLibrary(d_lib);
+        binaryen.linkLibrary(d_lib);
         b.step("binaryen-lib-" ++ dep_lib.path, "binaryen-library").dependOn(&d_lib.step);
     }
 
@@ -471,7 +477,7 @@ const libir = .{
     },
 };
 
-const llvm = .{
+const llvm_src = .{
     .src_path = "third_party/llvm-project",
     .include_path = "third_party/llvm-project/include",
     .sources = &.{
