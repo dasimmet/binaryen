@@ -111,7 +111,7 @@ pub fn build(b: *std.Build) void {
         d_lib.root_module.addIncludePath(config_h_include);
         d_lib.root_module.addIncludePath(fp16_path);
         binaryen.linkLibrary(d_lib);
-        b.step("binaryen-lib-" ++ dep_lib.path, "binaryen-library").dependOn(&d_lib.step);
+        b.step("binaryen-lib-" ++ dep_lib.path, "binaryen " ++ dep_lib.path ++ " library").dependOn(&d_lib.step);
     }
 
     const tools_path = src_dep.path("src/tools");
@@ -144,7 +144,7 @@ pub fn build(b: *std.Build) void {
         exe.root_module.linkLibrary(llvm_lib);
         const exe_install = b.addInstallArtifact(exe, .{});
         b.default_step.dependOn(&exe_install.step);
-        b.step("binaryen-" ++ t.name, "binaryen-tool " ++ t.name).dependOn(&exe_install.step);
+        b.step("binaryen-" ++ t.name, "binaryen tool " ++ t.name).dependOn(&exe_install.step);
     }
 }
 
