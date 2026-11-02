@@ -1,0 +1,22 @@
+#pragma once
+#include_next <condition_variable>
+#include <mutex>
+
+namespace std {
+#if !_LIBCPP_HAS_THREADS
+
+struct condition_variable {
+    condition_variable() = default;
+    ~condition_variable() = default;
+    condition_variable(const condition_variable&) = delete;
+    condition_variable& operator=(const condition_variable&) = delete;
+    void notify_one() noexcept {}
+    void notify_all() noexcept {}
+    template<class Lock, class Predicate>
+    void wait(Lock&, Predicate) {}
+    template<class Lock>
+    void wait(Lock&) {}
+};
+
+#endif
+}

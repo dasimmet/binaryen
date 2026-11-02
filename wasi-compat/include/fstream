@@ -1,0 +1,4 @@
+#pragma once
+#undef _LIBCPP_HAS_FILESYSTEM
+#define _LIBCPP_HAS_FILESYSTEM 1
+#include_next <fstream>

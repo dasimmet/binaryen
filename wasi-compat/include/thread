@@ -1,0 +1,45 @@
+#pragma once
+#include_next <thread>
+#include <mutex>
+#include <ostream>
+
+namespace std {
+#if !_LIBCPP_HAS_THREADS
+
+class thread {
+public:
+    class id {
+    public:
+        constexpr id() noexcept = default;
+        friend bool operator==(id, id) noexcept { return true; }
+        friend bool operator!=(id, id) noexcept { return false; }
+        friend bool operator<(id, id) noexcept { return false; }
+        template<class CharT, class Traits>
+        friend basic_ostream<CharT, Traits>& operator<<(basic_ostream<CharT, Traits>& os, id) {
+            return os << "0";
+        }
+    };
+    thread() noexcept = default;
+    template<class Function, class... Args>
+    explicit thread(Function&&, Args&&...) {}
+    ~thread() = default;
+    thread(thread&&) noexcept = default;
+    thread& operator=(thread&&) noexcept = default;
+    bool joinable() const noexcept { return true; }
+    void join() {}
+    id get_id() const noexcept { return id(); }
+    static unsigned int hardware_concurrency() noexcept { return 1; }
+};
+
+namespace this_thread {
+inline thread::id get_id() noexcept { return thread::id(); }
+}
+
+template<>
+struct hash<thread::id> {
+    size_t operator()(const thread::id&) const noexcept { return 0; }
+};
+
+#endif
+}
+

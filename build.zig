@@ -15,6 +15,8 @@ pub fn build(b: *std.Build) void {
     const opt = b.standardOptimizeOption(.{});
     const src_dep = b.dependency("binaryen", .{});
 
+    const compat_include = b.path("wasi-compat/include");
+
     const fmt = b.addFmt(.{
         .check = b.option(bool, "fmtcheck", "check formatting") orelse false,
         .paths = &.{
@@ -58,6 +60,23 @@ pub fn build(b: *std.Build) void {
     binaryen.addIncludePath(src_path);
     binaryen.addIncludePath(fp16_path);
     binaryen.addIncludePath(src_dep.path(llvm_src.include_path));
+    if (target.result.os.tag == .wasi) {
+        binaryen.addIncludePath(compat_include);
+        binaryen.addCSourceFile(.{
+            .file = b.path("wasi-compat/wasi_compat.cpp"),
+            .flags = flags,
+        });
+        const fstream_src = LazyPath.zig_lib.join(b.allocator, "libcxx/src/fstream.cpp") catch @panic("OOM");
+        const ios_inst_src = LazyPath.zig_lib.join(b.allocator, "libcxx/src/ios.instantiations.cpp") catch @panic("OOM");
+        binaryen.addCSourceFile(.{
+            .file = fstream_src,
+            .flags = flags,
+        });
+        binaryen.addCSourceFile(.{
+            .file = ios_inst_src,
+            .flags = flags,
+        });
+    }
     binaryen.addCSourceFiles(.{
         .files = lib_sources,
         .root = src_path,
@@ -79,8 +98,12 @@ pub fn build(b: *std.Build) void {
     llvm.addCSourceFiles(.{
         .files = llvm_src.sources,
         .root = src_dep.path(llvm_src.src_path),
+        .flags = flags,
     });
     llvm.addIncludePath(src_dep.path(llvm_src.include_path));
+    if (target.result.os.tag == .wasi) {
+        llvm.addIncludePath(compat_include);
+    }
 
     inline for (dep_libs) |dep_lib| {
         const d_lib = b.addLibrary(.{
@@ -110,6 +133,9 @@ pub fn build(b: *std.Build) void {
         d_lib.root_module.addIncludePath(src_path);
         d_lib.root_module.addIncludePath(config_h_include);
         d_lib.root_module.addIncludePath(fp16_path);
+        if (target.result.os.tag == .wasi) {
+            d_lib.root_module.addIncludePath(compat_include);
+        }
         binaryen.linkLibrary(d_lib);
         b.step("binaryen-lib-" ++ dep_lib.path, "binaryen " ++ dep_lib.path ++ " library").dependOn(&d_lib.step);
     }
@@ -124,6 +150,10 @@ pub fn build(b: *std.Build) void {
                 .link_libcpp = true,
             }),
         });
+        if (target.result.os.tag == .wasi) {
+            exe.stack_size = 5 * 1024 * 1024;
+            exe.root_module.addIncludePath(compat_include);
+        }
         exe.root_module.linkLibrary(lib);
         exe.root_module.addIncludePath(src_path);
         exe.root_module.addIncludePath(fp16_path);
