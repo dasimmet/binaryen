@@ -8,7 +8,7 @@ const builtin = @import("builtin");
 const LazyPath = std.Build.LazyPath;
 const Dependency = std.Build.Dependency;
 
-const binaryen_version_h = "121";
+const zon_version = std.SemanticVersion.parse(@import("build.zig.zon").version) catch unreachable;
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -28,7 +28,7 @@ pub fn build(b: *std.Build) void {
         .style = .{ .cmake = src_dep.path("config.h.in") },
         .include_path = "config.h",
     }, .{
-        .PROJECT_VERSION = binaryen_version_h,
+        .PROJECT_VERSION = b.fmt("{d}", .{zon_version.patch}),
     });
     const config_h_include = config_h.getOutputDir();
 
@@ -177,6 +177,7 @@ const tools: []const Tool = &.{
         } ++ fuzz_sources),
     },
     .{ .name = "wasm-merge" },
+    .{ .name = "wasm-metadce" },
     .{
         .name = "wasm-opt",
         .files = &(.{
@@ -189,6 +190,7 @@ const tools: []const Tool = &.{
             "wasm-reduce/wasm-reduce.cpp",
         },
     },
+    .{ .name = "wasm-shell" },
     .{
         .name = "wasm-split",
         .files = &.{
@@ -197,7 +199,7 @@ const tools: []const Tool = &.{
             "wasm-split/instrumenter.cpp",
         },
     },
-    .{ .name = "wasm-shell" },
+    .{ .name = "wasm2js" },
 };
 
 const fuzz_sources = .{
